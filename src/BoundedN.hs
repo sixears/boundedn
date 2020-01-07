@@ -85,6 +85,11 @@ import Control.Monad.Except  ( MonadError, throwError )
 import Data.MoreUnicode.Functor  ( (⊳), (⩺) )
 import Data.MoreUnicode.Tasty    ( (≟) )
 
+-- number ------------------------------
+
+import Number  ( FromI( fromI, fromI', __fromI, __fromI' )
+               , ToNum( toNum ) )
+
 -- QuickCheck --------------------------
 
 import Test.QuickCheck        ( Gen, Property, property )
@@ -120,13 +125,6 @@ import Text.Fmt  ( fmt )
 -- validity ----------------------------
 
 import Data.Validity  ( Validation, Validity( validate ), check )
-
-------------------------------------------------------------
---                     local imports                      --
-------------------------------------------------------------
-
-import FromI  ( FromI( fromI, fromI', __fromI, __fromI' ) )
-import ToNum  ( ToNum( toNum ) )
 
 --------------------------------------------------------------------------------
 
