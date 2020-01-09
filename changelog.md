@@ -1,3 +1,7 @@
+1.1.2.0 2019-01-09
+==================
+- add export for divModulo
+
 1.1.1.0 2019-01-09
 ==================
 - add modulo, divModulo, and variants thereof

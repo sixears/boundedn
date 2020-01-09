@@ -19,7 +19,7 @@ module BoundedN
   ( -- don't export the constructor, so clients can't create out-of-range values
     BoundedN, 𝕎, pattern 𝕎, pattern 𝕎', pattern W, pattern W'
   , checkBoundedN, checkBoundedN', 𝕨
-  , divModuloProxy, divModuloP, divM, divMP
+  , divModulo, divModuloProxy, divModuloP, divM, divMP
   , modulo, moduloN, moduloProxy, moduloP, moduloProxyN, moduloPN
 
   , tests
