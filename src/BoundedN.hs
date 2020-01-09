@@ -19,6 +19,8 @@ module BoundedN
   ( -- don't export the constructor, so clients can't create out-of-range values
     BoundedN, 𝕎, pattern 𝕎, pattern 𝕎', pattern W, pattern W'
   , checkBoundedN, checkBoundedN', 𝕨
+  , divModuloProxy, divModuloP, divM, divMP
+  , modulo, moduloN, moduloProxy, moduloP, moduloProxyN, moduloPN
 
   , tests
   )
@@ -27,7 +29,7 @@ where
 import Prelude  ( Bounded, Enum( pred, succ ), Integer, Integral( toInteger )
                 , Num
                 , (-)
-                , enumFrom, enumFromThen, enumFromThenTo, enumFromTo, error
+                , div, enumFrom, enumFromThen, enumFromThenTo, enumFromTo, error
                 , fromEnum, fromInteger, maxBound, minBound, toEnum, toInteger
                 )
 
@@ -65,6 +67,7 @@ import Control.DeepSeq  ( NFData )
 
 -- finite-typelits ---------------------
 
+import qualified  Data.Finite
 import Data.Finite  ( Finite, getFinite, packFinite )
 
 -- genvalidity -------------------------
@@ -358,11 +361,77 @@ eqTests =
   testGroup "Eq" [ testCase "2==2" $ 𝕎 2 ≟ (𝕎 @9 2)
                  , testCase "2/=3" $ assertBool "2/=3" (not $ 𝕎 2 ≡ 𝕎 @7 3)
                  ]
+
+----------------------------------------
+
+{- | `Prelude.mod`, returning a BoundedN (and type implied by). -}
+modulo ∷ (KnownNat ν, Integral α) ⇒ α → 𝕎 ν
+modulo i = BoundedN $ Data.Finite.modulo (toInteger i)
+
+{- | `modulo` using `ToNum` rather that `Integral`. -}
+moduloN ∷ (KnownNat ν, ToNum α) ⇒ α → 𝕎 ν
+moduloN i = BoundedN $ Data.Finite.modulo (toNum i)
+
+{- | `Prelude.mod`, returning a BoundedN, with a proxy to help with type
+     signatures. -}
+moduloProxy ∷ (KnownNat ν, Integral α) ⇒ proxy ν → α → 𝕎 ν
+moduloProxy p i = BoundedN $ Data.Finite.moduloProxy p (toInteger i)
+
+{- | Alias for `moduloProxy`. -}
+moduloP ∷ (KnownNat ν, Integral α) ⇒ proxy ν → α → 𝕎 ν
+moduloP = moduloProxy
+
+{- | `moduloProxy` using `ToNum` rather that `Integral`. -}
+moduloProxyN ∷ (KnownNat ν, ToNum α) ⇒ proxy ν → α → 𝕎 ν
+moduloProxyN p i = BoundedN $ Data.Finite.moduloProxy p (toNum i)
+
+{- | Alias for `moduloPN`. -}
+moduloPN ∷ (KnownNat ν, ToNum α) ⇒ proxy ν → α → 𝕎 ν
+moduloPN = moduloProxyN
+
+------------------------------------------------------------
+
+{- | `Prelude.divMod`, returning a BoundedN (and type implied by). -}
+divModulo ∷ (KnownNat ν, Integral α) ⇒ α → (α, 𝕎 ν)
+divModulo i = let m = BoundedN $ Data.Finite.modulo (toInteger i)
+                  n = fromInteger $ toInteger $ natVal m
+               in (i `div` n, m)
+
+{- | Alias for `divModulo`. -}
+divM ∷ (KnownNat ν, Integral α) ⇒ α → (α, 𝕎 ν)
+divM = divModulo
+
+{- | `Prelude.divMod`, returning a BoundedN, with a proxy to help with type
+     signatures. -}
+divModuloProxy ∷ (KnownNat ν, Integral α) ⇒ proxy ν → α → (α, 𝕎 ν)
+divModuloProxy p i = let m = BoundedN $ Data.Finite.moduloProxy p (toInteger i)
+                         n = fromInteger $ toInteger $ natVal m
+                      in (i `div` n, m)
+
+{- | Alias for `divModuloProxy`. -}
+divModuloP ∷ (KnownNat ν, Integral α) ⇒ proxy ν → α → (α, 𝕎 ν)
+divModuloP = divModuloProxy
+
+{- | Alias for `divModuloProxy`. -}
+divMP ∷ (KnownNat ν, Integral α) ⇒ proxy ν → α → (α, 𝕎 ν)
+divMP = divModuloProxy
+
+divModuloTests ∷ TestTree
+divModuloTests =
+  testGroup "divModulo"
+            [ testCase "6 ≑ 3" $ (2, 𝕎 0) ≟ divModulo @3 (6 ∷ Integer)
+            , testCase "7 ≑ 3" $ (2, 𝕎 1) ≟ divModulo @3 (7 ∷ Integer)
+            , testCase "8 ≑ 3" $ (2, 𝕎 2) ≟ divModulo @3 (8 ∷ Integer)
+            , testCase "9 ≑ 3" $ (3, 𝕎 0) ≟ divModulo @3 (9 ∷ Integer)
+            ]
+
+----------------------------------------
 ------------------------------------------------------------
 
 tests ∷ TestTree
 tests = testGroup "BoundedN" [ boundedTests, enumTests, eqTests, arbitraryTests
                              , toBoundedNTests, __toBoundedNTests, 𝕨Tests
+                             , divModuloTests
                              ]
 
 ----------------------------------------
