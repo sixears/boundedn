@@ -7,11 +7,13 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE KindSignatures             #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE NoStarIsType               #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE PatternSynonyms            #-}
 {-# LANGUAGE QuasiQuotes                #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE TypeOperators              #-}
 {-# LANGUAGE UnicodeSyntax              #-}
 {-# LANGUAGE ViewPatterns               #-}
 
@@ -20,6 +22,7 @@ module BoundedN
     BoundedN, 𝕎, pattern 𝕎, pattern 𝕎', pattern W, pattern W'
   , checkBoundedN, checkBoundedN', 𝕨
   , divModulo, divModuloProxy, divModuloP, divM, divMP
+  , add, (⨹), subtract, sub, (⨺), multiply, mult, (⨻)
   , modulo, moduloN, moduloProxy, moduloP, moduloProxyN, moduloPN
 
   , tests
@@ -35,22 +38,24 @@ import Prelude  ( Bounded, Enum( pred, succ ), Integer, Integral( toInteger )
 
 -- base --------------------------------
 
-import Control.Exception      ( Exception )
-import Control.Monad          ( return )
-import Data.Bool              ( not, otherwise )
-import Data.Either            ( Either, either )
-import Data.Eq                ( Eq )
-import Data.Function          ( ($), const, id )
-import Data.Maybe             ( Maybe( Just, Nothing ) )
-import Data.Ord               ( Ord, (<) )
-import Data.String            ( String )
-import Data.Typeable          ( Typeable )
-import GHC.Generics           ( Generic )
-import GHC.TypeNats           ( KnownNat, Nat, natVal )
-import System.Exit            ( ExitCode )
-import System.IO              ( IO )
-import Text.Read              ( Read )
-import Text.Show              ( Show( show ) )
+import Control.Exception  ( Exception )
+import Control.Monad      ( return )
+import Data.Bifunctor     ( bimap )
+import Data.Bool          ( not, otherwise )
+import Data.Either        ( Either( Right ), either )
+import Data.Eq            ( Eq )
+import Data.Function      ( ($), const, flip, id )
+import Data.Maybe         ( Maybe( Just, Nothing ) )
+import Data.Ord           ( Ord, (<) )
+import Data.Proxy         ( Proxy( Proxy ) )
+import Data.String        ( String )
+import Data.Typeable      ( Typeable )
+import GHC.Generics       ( Generic )
+import GHC.TypeNats       ( KnownNat, Nat, type(+), type(*), natVal )
+import System.Exit        ( ExitCode )
+import System.IO          ( IO )
+import Text.Read          ( Read )
+import Text.Show          ( Show( show ) )
 
 -- base-unicode-symbols ----------------
 
@@ -267,7 +272,7 @@ __toBoundedNTests =
 
 {- | Pattern to (de)construct a BoundedN (A.K.A., 𝕎') from any integral value.
      *BEWARE* that the constructor is *PARTIAL* - you can, for example, write
-     𝕎' @3 (-1), and it will compile (but will diverge under evaluation.
+     𝕎' @3 (-1), and it will compile (but will diverge under evaluation).
  -}
 pattern 𝕎 ∷ KnownNat ν ⇒ Integer → 𝕎 ν
 pattern 𝕎 i ← ((getFinite ∘ toFinite) → i)
@@ -416,6 +421,10 @@ divModuloP = divModuloProxy
 divMP ∷ (KnownNat ν, Integral α) ⇒ proxy ν → α → (α, 𝕎 ν)
 divMP = divModuloProxy
 
+{- | Alias for `divModuloProxy`, with the arguments flipped. -}
+(⨸) ∷ (KnownNat ν, Integral α) ⇒ α → proxy ν → (α, 𝕎 ν)
+(⨸) = flip divModuloProxy
+
 divModuloTests ∷ TestTree
 divModuloTests =
   testGroup "divModulo"
@@ -423,15 +432,64 @@ divModuloTests =
             , testCase "7 ≑ 3" $ (2, 𝕎 1) ≟ divModulo @3 (7 ∷ Integer)
             , testCase "8 ≑ 3" $ (2, 𝕎 2) ≟ divModulo @3 (8 ∷ Integer)
             , testCase "9 ≑ 3" $ (3, 𝕎 0) ≟ divModulo @3 (9 ∷ Integer)
+            , testCase "8 ⨸ 3" $ (2, 𝕎 2) ≟ (8 ∷ Integer) ⨸ (Proxy ∷ Proxy 3)
             ]
 
 ----------------------------------------
+
+add ∷ BoundedN ν → BoundedN ν' → BoundedN (ν + ν')
+add (BoundedN m) (BoundedN n) = BoundedN $ Data.Finite.add m n
+
+(⨹) ∷ BoundedN ν → BoundedN ν' → BoundedN (ν + ν')
+(⨹) = add
+
+----------
+
+addTests ∷ TestTree
+addTests =
+  testGroup "add" [ testCase "6 + 3" $ 𝕎 @12 9 ≟ 𝕎 @8 6 ⨹ 𝕎 @4 3 ]
+
+----------------------------------------
+
+subtract ∷ BoundedN ν → BoundedN ν' → Either (BoundedN ν') (BoundedN ν)
+subtract (BoundedN m) (BoundedN n) =
+  bimap BoundedN BoundedN $ Data.Finite.sub m n
+
+sub ∷ BoundedN ν → BoundedN ν' → Either (BoundedN ν') (BoundedN ν)
+sub = subtract
+
+(⨺) ∷ BoundedN ν → BoundedN ν' → Either (BoundedN ν') (BoundedN ν)
+(⨺) = subtract
+
+----------
+
+subTests ∷ TestTree
+subTests =
+  testGroup "sub" [ testCase "6 - 3" $ Right (𝕎 2) ≟ 𝕎 @8 6 ⨺ 𝕎 @5 4 ]
+
+----------------------------------------
+
+multiply ∷ BoundedN ν → BoundedN ν' → BoundedN (ν * ν')
+multiply (BoundedN m) (BoundedN n) = BoundedN $ Data.Finite.multiply m n
+
+mult ∷ BoundedN ν → BoundedN ν' → BoundedN (ν * ν')
+mult = multiply
+
+(⨻) ∷ BoundedN ν → BoundedN ν' → BoundedN (ν * ν')
+(⨻) = multiply
+
+----------
+
+multTests ∷ TestTree
+multTests =
+  testGroup "sub" [ testCase "6 * 3" $ 𝕎 24 ≟ 𝕎 @8 6 ⨻ 𝕎 @5 4 ]
+
 ------------------------------------------------------------
 
 tests ∷ TestTree
 tests = testGroup "BoundedN" [ boundedTests, enumTests, eqTests, arbitraryTests
                              , toBoundedNTests, __toBoundedNTests, 𝕨Tests
-                             , divModuloTests
+                             , divModuloTests, addTests, subTests, multTests
                              ]
 
 ----------------------------------------
