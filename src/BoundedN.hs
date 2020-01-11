@@ -31,9 +31,10 @@ where
 
 import Prelude  ( Bounded, Enum( pred, succ ), Integer, Integral( toInteger )
                 , Num
-                , (-)
+                , (-), (*)
                 , div, enumFrom, enumFromThen, enumFromThenTo, enumFromTo, error
-                , fromEnum, fromInteger, maxBound, minBound, toEnum, toInteger
+                , fromEnum, fromInteger, fromIntegral, maxBound, minBound
+                , toEnum, toInteger
                 )
 
 -- base --------------------------------
@@ -73,7 +74,7 @@ import Control.DeepSeq  ( NFData )
 -- finite-typelits ---------------------
 
 import qualified  Data.Finite
-import Data.Finite  ( Finite, getFinite, packFinite )
+import Data.Finite  ( Finite, finite, getFinite, packFinite )
 
 -- genvalidity -------------------------
 
@@ -440,6 +441,7 @@ divModuloTests =
 add ∷ BoundedN ν → BoundedN ν' → BoundedN (ν + ν')
 add (BoundedN m) (BoundedN n) = BoundedN $ Data.Finite.add m n
 
+infixl 6 ⨹
 (⨹) ∷ BoundedN ν → BoundedN ν' → BoundedN (ν + ν')
 (⨹) = add
 
@@ -458,6 +460,7 @@ subtract (BoundedN m) (BoundedN n) =
 sub ∷ BoundedN ν → BoundedN ν' → Either (BoundedN ν') (BoundedN ν)
 sub = subtract
 
+infixl 6 ⨺
 (⨺) ∷ BoundedN ν → BoundedN ν' → Either (BoundedN ν') (BoundedN ν)
 (⨺) = subtract
 
@@ -475,6 +478,7 @@ multiply (BoundedN m) (BoundedN n) = BoundedN $ Data.Finite.multiply m n
 mult ∷ BoundedN ν → BoundedN ν' → BoundedN (ν * ν')
 mult = multiply
 
+infixl 7 ⨻
 (⨻) ∷ BoundedN ν → BoundedN ν' → BoundedN (ν * ν')
 (⨻) = multiply
 
@@ -482,7 +486,37 @@ mult = multiply
 
 multTests ∷ TestTree
 multTests =
-  testGroup "sub" [ testCase "6 * 3" $ 𝕎 24 ≟ 𝕎 @8 6 ⨻ 𝕎 @5 4 ]
+  testGroup "mult" [ testCase "6 * 3" $ 𝕎 24 ≟ 𝕎 @8 6 ⨻ 𝕎 @5 4
+                   , testCase "6 * 3" $ 𝕎 @35 24 ≟ 𝕎 6 ⨻ 𝕎 @5 4
+                   ]
+
+----------------------------------------
+
+{- | Multiply a bounded value by a fixed value, which is encoded in the type. -}
+product ∷ (KnownNat ν, KnownNat γ, KnownNat (ν * γ)) ⇒
+          BoundedN ν → proxy γ → BoundedN (ν * γ)
+product (BoundedN m) n =
+  BoundedN $ finite $ (getFinite m) * fromIntegral (natVal n)
+
+{- | Unicode operator for product; note that the half-circle is on the side of
+     the proxy type (type-affixed value). -}
+(⨵) ∷ (KnownNat ν, KnownNat γ, KnownNat (ν * γ)) ⇒
+       BoundedN ν → proxy γ → BoundedN (ν * γ)
+(⨵) = product
+
+{- | Unicode operator for product; note that the half-circle is on the side of
+     the proxy type (type-affixed value). -}
+(⨴) ∷ (KnownNat ν, KnownNat γ, KnownNat (ν * γ)) ⇒
+       proxy γ → BoundedN ν → BoundedN (ν * γ)
+(⨴) = flip product
+
+productTests ∷ TestTree
+productTests =
+  testGroup "product" [ testCase "3 *: 5" $ 𝕎 @20 15 ≟ 𝕎 @4 3 `product` 𝕎 @5 0
+                      , testCase "3 *: 4" $ 𝕎 12 ≟ 𝕎 @4 3 ⨵ 𝕎 @4 0
+                      , testCase "3 *: 6" $ 𝕎 @24 18 ≟ 𝕎 @4 3 ⨵ Proxy
+                      , testCase "4 *: 6" $ 𝕎 24 ≟ (Proxy @6) ⨴ 𝕎 @5 4
+                      ]
 
 ------------------------------------------------------------
 
@@ -490,6 +524,7 @@ tests ∷ TestTree
 tests = testGroup "BoundedN" [ boundedTests, enumTests, eqTests, arbitraryTests
                              , toBoundedNTests, __toBoundedNTests, 𝕨Tests
                              , divModuloTests, addTests, subTests, multTests
+                             , productTests
                              ]
 
 ----------------------------------------

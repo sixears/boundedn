@@ -1,3 +1,7 @@
+1.1.4.0 2019-01-11
+==================
+- add product and unicode operators
+
 1.1.3.0 2019-01-10
 ==================
 - add add,sub(tract),mult(iply) and their unicode operators
