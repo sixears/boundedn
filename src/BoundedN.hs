@@ -22,7 +22,7 @@ module BoundedN
     BoundedN, 𝕎, pattern 𝕎, pattern 𝕎', pattern W, pattern W'
   , checkBoundedN, checkBoundedN', 𝕨
   , divModulo, divModuloProxy, divModuloP, divM, divMP
-  , add, (⨹), subtract, sub, (⨺), multiply, mult, (⨻)
+  , add, (⨹), subtract, sub, (⨺), multiply, mult, (⨻), product, (⨴), (⨵)
   , modulo, moduloN, moduloProxy, moduloP, moduloProxyN, moduloPN
 
   , tests

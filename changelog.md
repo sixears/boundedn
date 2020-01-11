@@ -1,3 +1,7 @@
+1.1.5.0 2019-01-11
+==================
+- export product and unicode operators
+
 1.1.4.0 2019-01-11
 ==================
 - add product and unicode operators
