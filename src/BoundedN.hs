@@ -21,8 +21,8 @@ module BoundedN
   ( -- don't export the constructor, so clients can't create out-of-range values
     BoundedN, 𝕎, pattern 𝕎, pattern 𝕎', pattern W, pattern W'
   , checkBoundedN, checkBoundedN', 𝕨
-  , divModulo, divModuloProxy, divModuloP, divM, divMP
   , add, (⨹), subtract, sub, (⨺), multiply, mult, (⨻), product, (⨴), (⨵)
+  , divide, (⫽) , divModulo, divModuloProxy, divModuloP, divM, divMP
   , modulo, moduloN, moduloProxy, moduloP, moduloProxyN, moduloPN
 
   , tests
@@ -32,7 +32,7 @@ where
 import Prelude  ( Bounded, Enum( pred, succ ), Integer, Integral( toInteger )
                 , Num
                 , (-), (*)
-                , div, enumFrom, enumFromThen, enumFromThenTo, enumFromTo, error
+                , div, divMod, enumFrom, enumFromThen, enumFromThenTo, enumFromTo, error
                 , fromEnum, fromInteger, fromIntegral, maxBound, minBound
                 , toEnum, toInteger
                 )
@@ -79,6 +79,10 @@ import Data.Finite  ( Finite, finite, getFinite, packFinite )
 -- genvalidity -------------------------
 
 import Data.GenValidity  ( GenValid( genValid, shrinkValid ) )
+
+-- ghc-typelits-extra ------------------
+
+import GHC.TypeLits.Extra  ( DivRU )
 
 -- lens --------------------------------
 
@@ -147,6 +151,15 @@ newtype BoundedN (ν ∷ Nat) = BoundedN { toFinite ∷ Finite ν }
   deriving (Bounded,Enum,Eq,Generic,NFData,Ord,Read,Show)
 
 type 𝕎 = BoundedN
+
+finiteℕ ∷ KnownNat ν ⇒ ℕ → Finite ν
+finiteℕ = finite ∘ fromIntegral
+
+getFiniteℕ ∷ Finite ν → ℕ
+getFiniteℕ = fromInteger ∘ getFinite
+
+boundedℕ ∷ KnownNat ν ⇒ ℕ → BoundedN ν
+boundedℕ = BoundedN ∘ finiteℕ
 
 ----------------------------------------
 
@@ -502,12 +515,14 @@ product (BoundedN m) n =
      the proxy type (type-affixed value). -}
 (⨵) ∷ (KnownNat ν, KnownNat γ, KnownNat (ν * γ)) ⇒
        BoundedN ν → proxy γ → BoundedN (ν * γ)
+infixl 7 ⨵
 (⨵) = product
 
 {- | Unicode operator for product; note that the half-circle is on the side of
      the proxy type (type-affixed value). -}
 (⨴) ∷ (KnownNat ν, KnownNat γ, KnownNat (ν * γ)) ⇒
        proxy γ → BoundedN ν → BoundedN (ν * γ)
+infixl 7 ⨴
 (⨴) = flip product
 
 productTests ∷ TestTree
@@ -518,13 +533,66 @@ productTests =
                       , testCase "4 *: 6" $ 𝕎 24 ≟ (Proxy @6) ⨴ 𝕎 @5 4
                       ]
 
+----------------------------------------
+
+divide ∷ (KnownNat (DivRU ν γ), KnownNat γ) ⇒
+         BoundedN ν → proxy γ → (BoundedN (DivRU ν γ),BoundedN γ)
+divide (BoundedN a) b = let (x,y) = getFiniteℕ a `divMod` natVal b
+                         in (boundedℕ x,boundedℕ y)
+
+infixl 7 ⫽
+(⫽) ∷ (KnownNat (DivRU ν γ), KnownNat γ) ⇒
+       BoundedN ν → proxy γ → (BoundedN (DivRU ν γ),BoundedN γ)
+(⫽) = divide
+
+divideTests ∷ TestTree
+divideTests =
+  testGroup "divide"
+            [ testCase "0 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 0) ≟ 𝕎 @8 0 `divide` Proxy @3
+            , testCase "1 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 1) ≟ 𝕎 @8 1 `divide` Proxy @3
+            , testCase "2 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 2) ≟ 𝕎 @8 2 `divide` Proxy @3
+            , testCase "3 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 0) ≟ 𝕎 @8 3 `divide` Proxy @3
+            , testCase "4 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 1) ≟ 𝕎 @8 4 `divide` Proxy @3
+            , testCase "5 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 2) ≟ 𝕎 @8 5 `divide` Proxy @3
+            -- try it without the explicit types
+            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) ≟ 𝕎 @8 6 `divide` Proxy @3
+            , testCase "7 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 1) ≟ 𝕎 @8 7 `divide` Proxy
+
+            -- different BoundedN value, to show that isn't affecting things
+            -- (or rather that it is, but in the right way - the output bound
+            -- only)
+            , testCase "0 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 0) ≟ 𝕎 @10 0 `divide` Proxy @3
+            , testCase "1 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 1) ≟ 𝕎 @10 1 `divide` Proxy @3
+            , testCase "2 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 2) ≟ 𝕎 @10 2 `divide` Proxy @3
+            , testCase "3 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 0) ≟ 𝕎 @10 3 `divide` Proxy @3
+            , testCase "4 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 1) ≟ 𝕎 @10 4 `divide` Proxy @3
+            , testCase "5 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 2) ≟ 𝕎 @10 5 `divide` Proxy @3
+            -- try it without the explicit types
+            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) ≟ 𝕎 @10 6 `divide` Proxy @3
+            , testCase "7 ⫽ 3" $ (𝕎 @4 2,𝕎 @3 1) ≟ 𝕎 @10 7 `divide` Proxy
+            , testCase "8 ⫽ 3" $ (𝕎 @4 2,𝕎 @3 2) ≟ 𝕎 @10 8 `divide` Proxy
+            , testCase "9 ⫽ 3" $ (𝕎 @4 3,𝕎 @3 0) ≟ 𝕎 @10 9 `divide` Proxy
+
+            -- and also @9, which is equally divisible by @3
+            , testCase "0 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 0) ≟ 𝕎 @9 0 `divide` Proxy @3
+            , testCase "1 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 1) ≟ 𝕎 @9 1 `divide` Proxy @3
+            , testCase "2 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 2) ≟ 𝕎 @9 2 `divide` Proxy @3
+            , testCase "3 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 0) ≟ 𝕎 @9 3 `divide` Proxy @3
+            , testCase "4 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 1) ≟ 𝕎 @9 4 `divide` Proxy @3
+            , testCase "5 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 2) ≟ 𝕎 @9 5 `divide` Proxy @3
+            -- try it without the explicit types
+            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) ≟ 𝕎 @9 6 `divide` Proxy @3
+            , testCase "7 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 1) ≟ 𝕎 @9 7 `divide` Proxy
+            , testCase "8 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 2) ≟ 𝕎 @9 8 `divide` Proxy
+            ]
+
 ------------------------------------------------------------
 
 tests ∷ TestTree
 tests = testGroup "BoundedN" [ boundedTests, enumTests, eqTests, arbitraryTests
                              , toBoundedNTests, __toBoundedNTests, 𝕨Tests
                              , divModuloTests, addTests, subTests, multTests
-                             , productTests
+                             , productTests, divideTests
                              ]
 
 ----------------------------------------
