@@ -1,3 +1,7 @@
+1.1.6.0 2019-01-15
+==================
+- add rounded & unicode operator
+
 1.1.6.0 2019-01-13
 ==================
 - add divide & unicode operator (and set infix for product unicode operators)

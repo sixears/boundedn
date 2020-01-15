@@ -24,6 +24,7 @@ module BoundedN
   , add, (⨹), subtract, sub, (⨺), multiply, mult, (⨻), product, (⨴), (⨵)
   , divide, (⫽) , divModulo, divModuloProxy, divModuloP, divM, divMP
   , modulo, moduloN, moduloProxy, moduloP, moduloProxyN, moduloPN
+  , rounded, (⦼)
 
   , tests
   )
@@ -31,10 +32,10 @@ where
 
 import Prelude  ( Bounded, Enum( pred, succ ), Integer, Integral( toInteger )
                 , Num
-                , (-), (*)
-                , div, divMod, enumFrom, enumFromThen, enumFromThenTo, enumFromTo, error
-                , fromEnum, fromInteger, fromIntegral, maxBound, minBound
-                , toEnum, toInteger
+                , (+), (-), (*)
+                , div, divMod, enumFrom, enumFromThen, enumFromThenTo
+                , enumFromTo, error, fromEnum, fromInteger, fromIntegral
+                , maxBound, minBound, toEnum, toInteger
                 )
 
 -- base --------------------------------
@@ -147,7 +148,7 @@ __bang__ = either (error ∘ show) id
 maxOf ∷ Bounded α ⇒ α → α
 maxOf = const maxBound
 
-newtype BoundedN (ν ∷ Nat) = BoundedN { toFinite ∷ Finite ν }
+newtype BoundedN (ν ∷ Nat) = BoundedN { unBoundedN ∷ Finite ν }
   deriving (Bounded,Enum,Eq,Generic,NFData,Ord,Read,Show)
 
 type 𝕎 = BoundedN
@@ -289,22 +290,22 @@ __toBoundedNTests =
      𝕎' @3 (-1), and it will compile (but will diverge under evaluation).
  -}
 pattern 𝕎 ∷ KnownNat ν ⇒ Integer → 𝕎 ν
-pattern 𝕎 i ← ((getFinite ∘ toFinite) → i)
+pattern 𝕎 i ← ((getFinite ∘ unBoundedN) → i)
               where 𝕎 i = __fromI' i
 
 {- | Non-unicode alias for 𝕎 -}
 pattern W ∷ KnownNat ν ⇒ Integer → 𝕎 ν
-pattern W i ← ((getFinite ∘ toFinite) → i)
+pattern W i ← ((getFinite ∘ unBoundedN) → i)
               where W i = __fromI' i
 
 {- | Alias for 𝕎, for any @Integral@. -}
 pattern 𝕎' ∷ (KnownNat ν, Integral α, Show α) ⇒ α → 𝕎 ν
-pattern 𝕎' i ← ((fromInteger ∘ getFinite ∘ toFinite) → i)
+pattern 𝕎' i ← ((fromInteger ∘ getFinite ∘ unBoundedN) → i)
               where 𝕎' i = __fromI i
 
 {- | Non-unicode alias for 𝕎' -}
 pattern W' ∷ (KnownNat ν, Integral α, Show α) ⇒ α → 𝕎 ν
-pattern W' i ← ((fromInteger ∘ getFinite ∘ toFinite) → i)
+pattern W' i ← ((fromInteger ∘ getFinite ∘ unBoundedN) → i)
               where W' i = __fromI i
 
 instance KnownNat ν ⇒ ToNum (BoundedN ν) where
@@ -436,6 +437,7 @@ divMP ∷ (KnownNat ν, Integral α) ⇒ proxy ν → α → (α, 𝕎 ν)
 divMP = divModuloProxy
 
 {- | Alias for `divModuloProxy`, with the arguments flipped. -}
+infixl 7 ⨸
 (⨸) ∷ (KnownNat ν, Integral α) ⇒ α → proxy ν → (α, 𝕎 ν)
 (⨸) = flip divModuloProxy
 
@@ -535,6 +537,7 @@ productTests =
 
 ----------------------------------------
 
+{- | Divide a bounded value by a static value, returning also the remainder. -}
 divide ∷ (KnownNat (DivRU ν γ), KnownNat γ) ⇒
          BoundedN ν → proxy γ → (BoundedN (DivRU ν γ),BoundedN γ)
 divide (BoundedN a) b = let (x,y) = getFiniteℕ a `divMod` natVal b
@@ -586,13 +589,92 @@ divideTests =
             , testCase "8 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 2) ≟ 𝕎 @9 8 `divide` Proxy
             ]
 
+----------------------------------------
+
+{- | Divide a bounded int by a static value, rounding the result.  We use
+     classic rounding rules ('round half up'; in which a precise half rounds up.
+ -}
+
+-- https://en.wikipedia.org/wiki/Rounding#Round_half_up
+rounded ∷ (KnownNat γ, KnownNat (DivRU (ν+1) γ)) ⇒
+          BoundedN ν → proxy γ → BoundedN (DivRU (ν+1) γ)
+rounded (BoundedN a) b = let x = (2*(getFiniteℕ a)) `div` (natVal b)
+                             (y,z) = x `divMod` 2
+                          in BoundedN ∘ finite ∘ fromIntegral $ y+z
+
+{- | Alias for `rounded`. -}
+infixl 7 ⦼
+(⦼) ∷ (KnownNat γ, KnownNat (DivRU (ν+1) γ)) ⇒
+       BoundedN ν → proxy γ → BoundedN (DivRU (ν+1) γ)
+(⦼) = rounded
+
+roundedTests ∷ TestTree
+roundedTests =
+  testGroup "rounded"
+    [ testGroup "@6 rounded @3"
+        [ testCase "0" $ (𝕎 @3 0) ≟ 𝕎 @6 0 `rounded` Proxy @3
+        , testCase "1" $ (𝕎    0) ≟ 𝕎 @6 1 `rounded` Proxy @3
+        , testCase "2" $ (𝕎    1) ≟ 𝕎 @6 2 `rounded` Proxy @3
+        , testCase "3" $ (𝕎    1) ≟ 𝕎 @6 3 `rounded` Proxy @3
+        , testCase "4" $ (𝕎    1) ≟ 𝕎 @6 4 `rounded` Proxy @3
+        , testCase "5" $ (𝕎    2) ≟ 𝕎 @6 5 `rounded` Proxy @3
+        ]
+    , testGroup "@7 rounded @3"
+        [ testCase "0" $ (𝕎 @3 0) ≟ 𝕎 @7 0 `rounded` Proxy @3
+        , testCase "1" $ (𝕎    0) ≟ 𝕎 @7 1 `rounded` Proxy @3
+        , testCase "2" $ (𝕎    1) ≟ 𝕎 @7 2 `rounded` Proxy @3
+        , testCase "3" $ (𝕎    1) ≟ 𝕎 @7 3 `rounded` Proxy @3
+        , testCase "4" $ (𝕎    1) ≟ 𝕎 @7 4 `rounded` Proxy @3
+        , testCase "5" $ (𝕎    2) ≟ 𝕎 @7 5 `rounded` Proxy @3
+        , testCase "6" $ (𝕎    2) ≟ 𝕎 @7 6 `rounded` Proxy @3
+        ]
+    , testGroup "@8 rounded @3"
+        [ testCase "0" $ (𝕎 @3 0) ≟ 𝕎 @8 0 `rounded` Proxy @3
+        , testCase "1" $ (𝕎    0) ≟ 𝕎 @8 1 `rounded` Proxy @3
+        , testCase "2" $ (𝕎    1) ≟ 𝕎 @8 2 `rounded` Proxy @3
+        , testCase "3" $ (𝕎    1) ≟ 𝕎 @8 3 `rounded` Proxy @3
+        , testCase "4" $ (𝕎    1) ≟ 𝕎 @8 4 `rounded` Proxy @3
+        , testCase "5" $ (𝕎    2) ≟ 𝕎 @8 5 `rounded` Proxy @3
+        , testCase "6" $ (𝕎    2) ≟ 𝕎 @8 6 `rounded` Proxy @3
+        , testCase "7" $ (𝕎 @3 2) ≟ 𝕎 @8 7 `rounded` Proxy @3
+        ]
+    , testGroup "@6 rounded @2"
+        [ testCase "0" $ (𝕎 @4 0) ≟ 𝕎 @6 0 `rounded` Proxy @2
+        , testCase "1" $ (𝕎    1) ≟ 𝕎 @6 1 `rounded` Proxy @2
+        , testCase "2" $ (𝕎    1) ≟ 𝕎 @6 2 `rounded` Proxy @2
+        , testCase "3" $ (𝕎    2) ≟ 𝕎 @6 3 `rounded` Proxy @2
+        , testCase "4" $ (𝕎    2) ≟ 𝕎 @6 4 `rounded` Proxy @2
+        , testCase "5" $ (𝕎 @4 3) ≟ 𝕎 @6 5 `rounded` Proxy @2
+        ]
+    , testGroup "@7 rounded @2"
+        [ testCase "0" $ (𝕎 @4 0) ≟ 𝕎 @7 0 `rounded` Proxy @2
+        , testCase "1" $ (𝕎    1) ≟ 𝕎 @7 1 `rounded` Proxy @2
+        , testCase "2" $ (𝕎    1) ≟ 𝕎 @7 2 `rounded` Proxy @2
+        , testCase "3" $ (𝕎    2) ≟ 𝕎 @7 3 `rounded` Proxy @2
+        , testCase "4" $ (𝕎    2) ≟ 𝕎 @7 4 `rounded` Proxy @2
+        , testCase "5" $ (𝕎    3) ≟ 𝕎 @7 5 `rounded` Proxy @2
+        , testCase "6" $ (𝕎 @4 3) ≟ 𝕎 @7 6 `rounded` Proxy @2
+        ]
+    , testGroup "@8 rounded @2"
+        [ testCase "0" $ (𝕎 @5 0) ≟ 𝕎 @8 0 `rounded` Proxy @2
+        , testCase "1" $ (𝕎    1) ≟ 𝕎 @8 1 `rounded` Proxy @2
+        , testCase "2" $ (𝕎    1) ≟ 𝕎 @8 2 `rounded` Proxy @2
+        , testCase "3" $ (𝕎    2) ≟ 𝕎 @8 3 `rounded` Proxy @2
+        , testCase "4" $ (𝕎    2) ≟ 𝕎 @8 4 `rounded` Proxy @2
+        , testCase "5" $ (𝕎    3) ≟ 𝕎 @8 5 `rounded` Proxy @2
+        , testCase "6" $ (𝕎    3) ≟ 𝕎 @8 6 `rounded` Proxy @2
+        , testCase "7" $ (𝕎 @5 4) ≟ 𝕎 @8 7 `rounded` Proxy @2
+        ]
+    ]
+
+
 ------------------------------------------------------------
 
 tests ∷ TestTree
 tests = testGroup "BoundedN" [ boundedTests, enumTests, eqTests, arbitraryTests
                              , toBoundedNTests, __toBoundedNTests, 𝕨Tests
                              , divModuloTests, addTests, subTests, multTests
-                             , productTests, divideTests
+                             , productTests, divideTests, roundedTests
                              ]
 
 ----------------------------------------
