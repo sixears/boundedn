@@ -97,7 +97,6 @@ import Control.Monad.Except  ( MonadError, throwError )
 -- more-unicode ------------------------
 
 import Data.MoreUnicode.Functor  ( (⊳), (⩺) )
-import Data.MoreUnicode.Tasty    ( (≟) )
 
 -- number ------------------------------
 
@@ -116,7 +115,7 @@ import Test.Tasty  ( TestTree, testGroup )
 
 -- tasty-hunit -------------------------
 
-import Test.Tasty.HUnit  ( assertBool, testCase )
+import Test.Tasty.HUnit  ( (@=?), assertBool, testCase )
 
 -- tasty-plus --------------------------
 
@@ -128,9 +127,9 @@ import Test.Tasty.QuickCheck  ( testProperty )
 
 -- template-haskell --------------------
 
-import Language.Haskell.TH         ( Exp( AppE, ConE, LitE ), ExpQ
-                                   , Lit( IntegerL ) )
-import Language.Haskell.TH.Syntax  ( Lift( lift ) )
+import Language.Haskell.TH         ( Exp( AppE, ConE, LitE ), Lit( IntegerL ) )
+import Language.Haskell.TH.Syntax  ( Code, Lift( lift, liftTyped ), Quote
+                                   , TExp( TExp ), liftCode )
 
 -- tfmt --------------------------------
 
@@ -182,10 +181,12 @@ instance KnownNat ν ⇒ GenValid (BoundedN ν) where
   shrinkValid  _     = error "shrinkValid failed to pattern-match on 𝕎"
 
 instance KnownNat ν ⇒ Lift (BoundedN ν) where
-  lift ∷ BoundedN ν → ExpQ
+  lift ∷ Quote m ⇒ BoundedN ν → m Exp
   -- λ> runQ [|  W 7 |]
   -- AppE (ConE MInfo.BoundedN.W) (LitE (IntegerL 7))
   lift (BoundedN n) = return $ AppE (ConE 'W) (LitE $ IntegerL (getFinite n))
+  liftTyped ∷ Quote m ⇒ BoundedN ν → Code m (BoundedN ν)
+  liftTyped s = liftCode $ TExp ⊳ lift s
 
 ----------------------------------------
 
@@ -258,10 +259,10 @@ toBoundedN' = fromI'
 toBoundedNTests ∷ TestTree
 toBoundedNTests =
   testGroup "toBoundedN"
-            [ testCase "toBoundedN 5" $ Just (𝕎 @6 5) ≟ toBoundedN' 5
-            , testCase "toBoundedN 7" $ (Nothing ∷ Maybe (𝕎 6)) ≟ 𝕨 7
-            , testCase "toBoundedN @6 7" $ Nothing      ≟ toBoundedN' @6 7
-            , testCase "toBoundedN @8 7" $ Just (𝕎 7) ≟ toBoundedN' @8 7
+            [ testCase "toBoundedN 5" $ Just (𝕎 @6 5) @=? toBoundedN' 5
+            , testCase "toBoundedN 7" $ (Nothing ∷ Maybe (𝕎 6)) @=? 𝕨 7
+            , testCase "toBoundedN @6 7" $ Nothing      @=? toBoundedN' @6 7
+            , testCase "toBoundedN @8 7" $ Just (𝕎 7) @=? toBoundedN' @8 7
             ]
 
 ----------------------------------------
@@ -278,7 +279,7 @@ __toBoundedN' = __toBoundedN
 __toBoundedNTests ∷ TestTree
 __toBoundedNTests =
   testGroup "__toBoundedN"
-            [ testCase "__toBoundedN 5" $ (𝕎 @6 5 ∷ 𝕎 6) ≟ __toBoundedN' @6 5
+            [ testCase "__toBoundedN 5" $ (𝕎 @6 5 ∷ 𝕎 6) @=? __toBoundedN' @6 5
             , testCase "__toBoundedN 7" $
                 assertAnyException "__toBoundedN 7" $ __toBoundedN' @6 7
             ]
@@ -320,10 +321,10 @@ instance KnownNat ν ⇒ ToNum (BoundedN ν) where
   let five  = 𝕎 @7 5
       seven = 𝕎 @7 7
    in testGroup "𝕎'"
-                [ testCase "five"  $ 5 ≟ (\ case (𝕎 x) → x; _ → -1) five
+                [ testCase "five"  $ 5 @=? (\ case (𝕎 x) → x; _ → -1) five
                 , testCase "seven" $
                   assertAnyException "seven" $ (\ case (𝕎 x) → x; _ → 1) seven
-                , testCase "five" $ five ≟ 𝕎 5
+                , testCase "five" $ five @=? 𝕎 5
                 , testCase "seven" $ assertAnyException "seven" $ 𝕎 @7 7
                 , testCase "-1" $ assertAnyException "-1" $ 𝕎 @3 (-1)
                 ]
@@ -344,8 +345,8 @@ arbitraryTests =
 boundedTests ∷ TestTree
 boundedTests =
   testGroup "Bounded"
-    [ testCase "minBound" $ 𝕎 0 ≟ minBound @(𝕎 7)
-    , testCase "maxBound" $ 𝕎 6 ≟ maxBound @(𝕎 7)
+    [ testCase "minBound" $ 𝕎 0 @=? minBound @(𝕎 7)
+    , testCase "maxBound" $ 𝕎 6 @=? maxBound @(𝕎 7)
     ]
 
 ----------------------------------------
@@ -355,30 +356,30 @@ enumTests =
   let assertFail ∷ String → 𝕎 7 → TestTree
       assertFail n v = testCase n $ assertAnyException n v
    in testGroup "Enum"
-        [ testCase   "succ 5"   $ 𝕎 6 ≟ succ (𝕎 @7 5)
-        , testCase   "pred 5"   $ 𝕎 4 ≟ pred (𝕎 @7 5)
+        [ testCase   "succ 5"   $ 𝕎 6 @=? succ (𝕎 @7 5)
+        , testCase   "pred 5"   $ 𝕎 4 @=? pred (𝕎 @7 5)
         , assertFail "pred 0"   (pred $ 𝕎 0)
         , assertFail "succ 6"   (succ $ 𝕎 6)
-        , testCase   "toEnum 4" $ (𝕎 @7 4) ≟ toEnum 4
+        , testCase   "toEnum 4" $ (𝕎 @7 4) @=? toEnum 4
         , assertFail "toEnum 7" (toEnum $ 7)
-        , testCase   "fromEnum 4" $ 4 ≟ (fromEnum (𝕎 @7 4))
+        , testCase   "fromEnum 4" $ 4 @=? (fromEnum (𝕎 @7 4))
         , testCase   "enumFrom 4" $
-            [𝕎 4, 𝕎 5, 𝕎 6] ≟ enumFrom (𝕎 @7 4)
+            [𝕎 4, 𝕎 5, 𝕎 6] @=? enumFrom (𝕎 @7 4)
         , testCase   "enumFromThen 1 3" $
-            [𝕎 1, 𝕎 3, 𝕎 5] ≟ enumFromThen (𝕎 @7 1) (𝕎 3)
+            [𝕎 1, 𝕎 3, 𝕎 5] @=? enumFromThen (𝕎 @7 1) (𝕎 3)
         , testCase   "enumFromTo 1 4" $
-            [𝕎 1, 𝕎 2, 𝕎 3, 𝕎 4] ≟ enumFromTo (𝕎 @7 1) (𝕎 4)
+            [𝕎 1, 𝕎 2, 𝕎 3, 𝕎 4] @=? enumFromTo (𝕎 @7 1) (𝕎 4)
 
         , testCase   "enumFromThenTo 8 5 0" $
               [𝕎 8, 𝕎 5, 𝕎 2]
-            ≟ enumFromThenTo (𝕎 @9 8) (𝕎 5) (𝕎 0)
+            @=? enumFromThenTo (𝕎 @9 8) (𝕎 5) (𝕎 0)
         ]
 
 ----------------------------------------
 
 eqTests ∷ TestTree
 eqTests =
-  testGroup "Eq" [ testCase "2==2" $ 𝕎 2 ≟ (𝕎 @9 2)
+  testGroup "Eq" [ testCase "2==2" $ 𝕎 2 @=? (𝕎 @9 2)
                  , testCase "2/=3" $ assertBool "2/=3" (not $ 𝕎 2 ≡ 𝕎 @7 3)
                  ]
 
@@ -444,11 +445,11 @@ infixl 7 ⨸
 divModuloTests ∷ TestTree
 divModuloTests =
   testGroup "divModulo"
-            [ testCase "6 ≑ 3" $ (2, 𝕎 0) ≟ divModulo @3 (6 ∷ Integer)
-            , testCase "7 ≑ 3" $ (2, 𝕎 1) ≟ divModulo @3 (7 ∷ Integer)
-            , testCase "8 ≑ 3" $ (2, 𝕎 2) ≟ divModulo @3 (8 ∷ Integer)
-            , testCase "9 ≑ 3" $ (3, 𝕎 0) ≟ divModulo @3 (9 ∷ Integer)
-            , testCase "8 ⨸ 3" $ (2, 𝕎 2) ≟ (8 ∷ Integer) ⨸ (Proxy ∷ Proxy 3)
+            [ testCase "6 ≑ 3" $ (2, 𝕎 0) @=? divModulo @3 (6 ∷ Integer)
+            , testCase "7 ≑ 3" $ (2, 𝕎 1) @=? divModulo @3 (7 ∷ Integer)
+            , testCase "8 ≑ 3" $ (2, 𝕎 2) @=? divModulo @3 (8 ∷ Integer)
+            , testCase "9 ≑ 3" $ (3, 𝕎 0) @=? divModulo @3 (9 ∷ Integer)
+            , testCase "8 ⨸ 3" $ (2, 𝕎 2) @=? (8 ∷ Integer) ⨸ (Proxy ∷ Proxy 3)
             ]
 
 ----------------------------------------
@@ -464,7 +465,7 @@ infixl 6 ⨹
 
 addTests ∷ TestTree
 addTests =
-  testGroup "add" [ testCase "6 + 3" $ 𝕎 @12 9 ≟ 𝕎 @8 6 ⨹ 𝕎 @4 3 ]
+  testGroup "add" [ testCase "6 + 3" $ 𝕎 @12 9 @=? 𝕎 @8 6 ⨹ 𝕎 @4 3 ]
 
 ----------------------------------------
 
@@ -483,7 +484,7 @@ infixl 6 ⨺
 
 subTests ∷ TestTree
 subTests =
-  testGroup "sub" [ testCase "6 - 3" $ Right (𝕎 2) ≟ 𝕎 @8 6 ⨺ 𝕎 @5 4 ]
+  testGroup "sub" [ testCase "6 - 3" $ Right (𝕎 2) @=? 𝕎 @8 6 ⨺ 𝕎 @5 4 ]
 
 ----------------------------------------
 
@@ -501,8 +502,8 @@ infixl 7 ⨻
 
 multTests ∷ TestTree
 multTests =
-  testGroup "mult" [ testCase "6 * 3" $ 𝕎 24 ≟ 𝕎 @8 6 ⨻ 𝕎 @5 4
-                   , testCase "6 * 3" $ 𝕎 @35 24 ≟ 𝕎 6 ⨻ 𝕎 @5 4
+  testGroup "mult" [ testCase "6 * 3" $ 𝕎 24 @=? 𝕎 @8 6 ⨻ 𝕎 @5 4
+                   , testCase "6 * 3" $ 𝕎 @35 24 @=? 𝕎 6 ⨻ 𝕎 @5 4
                    ]
 
 ----------------------------------------
@@ -529,10 +530,10 @@ infixl 7 ⨴
 
 productTests ∷ TestTree
 productTests =
-  testGroup "product" [ testCase "3 *: 5" $ 𝕎 @20 15 ≟ 𝕎 @4 3 `product` 𝕎 @5 0
-                      , testCase "3 *: 4" $ 𝕎 12 ≟ 𝕎 @4 3 ⨵ 𝕎 @4 0
-                      , testCase "3 *: 6" $ 𝕎 @24 18 ≟ 𝕎 @4 3 ⨵ Proxy
-                      , testCase "4 *: 6" $ 𝕎 24 ≟ (Proxy @6) ⨴ 𝕎 @5 4
+  testGroup "product" [ testCase "3 *: 5" $ 𝕎 @20 15 @=? 𝕎 @4 3 `product` 𝕎 @5 0
+                      , testCase "3 *: 4" $ 𝕎 12 @=? 𝕎 @4 3 ⨵ 𝕎 @4 0
+                      , testCase "3 *: 6" $ 𝕎 @24 18 @=? 𝕎 @4 3 ⨵ Proxy
+                      , testCase "4 *: 6" $ 𝕎 24 @=? (Proxy @6) ⨴ 𝕎 @5 4
                       ]
 
 ----------------------------------------
@@ -551,42 +552,42 @@ infixl 7 ⫽
 divideTests ∷ TestTree
 divideTests =
   testGroup "divide"
-            [ testCase "0 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 0) ≟ 𝕎 @8 0 `divide` Proxy @3
-            , testCase "1 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 1) ≟ 𝕎 @8 1 `divide` Proxy @3
-            , testCase "2 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 2) ≟ 𝕎 @8 2 `divide` Proxy @3
-            , testCase "3 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 0) ≟ 𝕎 @8 3 `divide` Proxy @3
-            , testCase "4 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 1) ≟ 𝕎 @8 4 `divide` Proxy @3
-            , testCase "5 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 2) ≟ 𝕎 @8 5 `divide` Proxy @3
+            [ testCase "0 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 0) @=? 𝕎 @8 0 `divide` Proxy @3
+            , testCase "1 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 1) @=? 𝕎 @8 1 `divide` Proxy @3
+            , testCase "2 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 2) @=? 𝕎 @8 2 `divide` Proxy @3
+            , testCase "3 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 0) @=? 𝕎 @8 3 `divide` Proxy @3
+            , testCase "4 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 1) @=? 𝕎 @8 4 `divide` Proxy @3
+            , testCase "5 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 2) @=? 𝕎 @8 5 `divide` Proxy @3
             -- try it without the explicit types
-            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) ≟ 𝕎 @8 6 `divide` Proxy @3
-            , testCase "7 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 1) ≟ 𝕎 @8 7 `divide` Proxy
+            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) @=? 𝕎 @8 6 `divide` Proxy @3
+            , testCase "7 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 1) @=? 𝕎 @8 7 `divide` Proxy
 
             -- different BoundedN value, to show that isn't affecting things
             -- (or rather that it is, but in the right way - the output bound
             -- only)
-            , testCase "0 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 0) ≟ 𝕎 @10 0 `divide` Proxy @3
-            , testCase "1 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 1) ≟ 𝕎 @10 1 `divide` Proxy @3
-            , testCase "2 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 2) ≟ 𝕎 @10 2 `divide` Proxy @3
-            , testCase "3 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 0) ≟ 𝕎 @10 3 `divide` Proxy @3
-            , testCase "4 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 1) ≟ 𝕎 @10 4 `divide` Proxy @3
-            , testCase "5 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 2) ≟ 𝕎 @10 5 `divide` Proxy @3
+            , testCase "0 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 0) @=? 𝕎 @10 0 `divide` Proxy @3
+            , testCase "1 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 1) @=? 𝕎 @10 1 `divide` Proxy @3
+            , testCase "2 ⫽ 3" $ (𝕎 @4 0,𝕎 @3 2) @=? 𝕎 @10 2 `divide` Proxy @3
+            , testCase "3 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 0) @=? 𝕎 @10 3 `divide` Proxy @3
+            , testCase "4 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 1) @=? 𝕎 @10 4 `divide` Proxy @3
+            , testCase "5 ⫽ 3" $ (𝕎 @4 1,𝕎 @3 2) @=? 𝕎 @10 5 `divide` Proxy @3
             -- try it without the explicit types
-            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) ≟ 𝕎 @10 6 `divide` Proxy @3
-            , testCase "7 ⫽ 3" $ (𝕎 @4 2,𝕎 @3 1) ≟ 𝕎 @10 7 `divide` Proxy
-            , testCase "8 ⫽ 3" $ (𝕎 @4 2,𝕎 @3 2) ≟ 𝕎 @10 8 `divide` Proxy
-            , testCase "9 ⫽ 3" $ (𝕎 @4 3,𝕎 @3 0) ≟ 𝕎 @10 9 `divide` Proxy
+            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) @=? 𝕎 @10 6 `divide` Proxy @3
+            , testCase "7 ⫽ 3" $ (𝕎 @4 2,𝕎 @3 1) @=? 𝕎 @10 7 `divide` Proxy
+            , testCase "8 ⫽ 3" $ (𝕎 @4 2,𝕎 @3 2) @=? 𝕎 @10 8 `divide` Proxy
+            , testCase "9 ⫽ 3" $ (𝕎 @4 3,𝕎 @3 0) @=? 𝕎 @10 9 `divide` Proxy
 
             -- and also @9, which is equally divisible by @3
-            , testCase "0 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 0) ≟ 𝕎 @9 0 `divide` Proxy @3
-            , testCase "1 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 1) ≟ 𝕎 @9 1 `divide` Proxy @3
-            , testCase "2 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 2) ≟ 𝕎 @9 2 `divide` Proxy @3
-            , testCase "3 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 0) ≟ 𝕎 @9 3 `divide` Proxy @3
-            , testCase "4 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 1) ≟ 𝕎 @9 4 `divide` Proxy @3
-            , testCase "5 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 2) ≟ 𝕎 @9 5 `divide` Proxy @3
+            , testCase "0 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 0) @=? 𝕎 @9 0 `divide` Proxy @3
+            , testCase "1 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 1) @=? 𝕎 @9 1 `divide` Proxy @3
+            , testCase "2 ⫽ 3" $ (𝕎 @3 0,𝕎 @3 2) @=? 𝕎 @9 2 `divide` Proxy @3
+            , testCase "3 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 0) @=? 𝕎 @9 3 `divide` Proxy @3
+            , testCase "4 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 1) @=? 𝕎 @9 4 `divide` Proxy @3
+            , testCase "5 ⫽ 3" $ (𝕎 @3 1,𝕎 @3 2) @=? 𝕎 @9 5 `divide` Proxy @3
             -- try it without the explicit types
-            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) ≟ 𝕎 @9 6 `divide` Proxy @3
-            , testCase "7 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 1) ≟ 𝕎 @9 7 `divide` Proxy
-            , testCase "8 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 2) ≟ 𝕎 @9 8 `divide` Proxy
+            , testCase "6 ⫽ 3" $ (𝕎 2,𝕎 0) @=? 𝕎 @9 6 `divide` Proxy @3
+            , testCase "7 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 1) @=? 𝕎 @9 7 `divide` Proxy
+            , testCase "8 ⫽ 3" $ (𝕎 @3 2,𝕎 @3 2) @=? 𝕎 @9 8 `divide` Proxy
             ]
 
 ----------------------------------------
@@ -612,58 +613,58 @@ roundedTests ∷ TestTree
 roundedTests =
   testGroup "rounded"
     [ testGroup "@6 rounded @3"
-        [ testCase "0" $ (𝕎 @3 0) ≟ 𝕎 @6 0 `rounded` Proxy @3
-        , testCase "1" $ (𝕎    0) ≟ 𝕎 @6 1 `rounded` Proxy @3
-        , testCase "2" $ (𝕎    1) ≟ 𝕎 @6 2 `rounded` Proxy @3
-        , testCase "3" $ (𝕎    1) ≟ 𝕎 @6 3 `rounded` Proxy @3
-        , testCase "4" $ (𝕎    1) ≟ 𝕎 @6 4 `rounded` Proxy @3
-        , testCase "5" $ (𝕎    2) ≟ 𝕎 @6 5 `rounded` Proxy @3
+        [ testCase "0" $ (𝕎 @3 0) @=? 𝕎 @6 0 `rounded` Proxy @3
+        , testCase "1" $ (𝕎    0) @=? 𝕎 @6 1 `rounded` Proxy @3
+        , testCase "2" $ (𝕎    1) @=? 𝕎 @6 2 `rounded` Proxy @3
+        , testCase "3" $ (𝕎    1) @=? 𝕎 @6 3 `rounded` Proxy @3
+        , testCase "4" $ (𝕎    1) @=? 𝕎 @6 4 `rounded` Proxy @3
+        , testCase "5" $ (𝕎    2) @=? 𝕎 @6 5 `rounded` Proxy @3
         ]
     , testGroup "@7 rounded @3"
-        [ testCase "0" $ (𝕎 @3 0) ≟ 𝕎 @7 0 `rounded` Proxy @3
-        , testCase "1" $ (𝕎    0) ≟ 𝕎 @7 1 `rounded` Proxy @3
-        , testCase "2" $ (𝕎    1) ≟ 𝕎 @7 2 `rounded` Proxy @3
-        , testCase "3" $ (𝕎    1) ≟ 𝕎 @7 3 `rounded` Proxy @3
-        , testCase "4" $ (𝕎    1) ≟ 𝕎 @7 4 `rounded` Proxy @3
-        , testCase "5" $ (𝕎    2) ≟ 𝕎 @7 5 `rounded` Proxy @3
-        , testCase "6" $ (𝕎    2) ≟ 𝕎 @7 6 `rounded` Proxy @3
+        [ testCase "0" $ (𝕎 @3 0) @=? 𝕎 @7 0 `rounded` Proxy @3
+        , testCase "1" $ (𝕎    0) @=? 𝕎 @7 1 `rounded` Proxy @3
+        , testCase "2" $ (𝕎    1) @=? 𝕎 @7 2 `rounded` Proxy @3
+        , testCase "3" $ (𝕎    1) @=? 𝕎 @7 3 `rounded` Proxy @3
+        , testCase "4" $ (𝕎    1) @=? 𝕎 @7 4 `rounded` Proxy @3
+        , testCase "5" $ (𝕎    2) @=? 𝕎 @7 5 `rounded` Proxy @3
+        , testCase "6" $ (𝕎    2) @=? 𝕎 @7 6 `rounded` Proxy @3
         ]
     , testGroup "@8 rounded @3"
-        [ testCase "0" $ (𝕎 @3 0) ≟ 𝕎 @8 0 `rounded` Proxy @3
-        , testCase "1" $ (𝕎    0) ≟ 𝕎 @8 1 `rounded` Proxy @3
-        , testCase "2" $ (𝕎    1) ≟ 𝕎 @8 2 `rounded` Proxy @3
-        , testCase "3" $ (𝕎    1) ≟ 𝕎 @8 3 `rounded` Proxy @3
-        , testCase "4" $ (𝕎    1) ≟ 𝕎 @8 4 `rounded` Proxy @3
-        , testCase "5" $ (𝕎    2) ≟ 𝕎 @8 5 `rounded` Proxy @3
-        , testCase "6" $ (𝕎    2) ≟ 𝕎 @8 6 `rounded` Proxy @3
-        , testCase "7" $ (𝕎 @3 2) ≟ 𝕎 @8 7 `rounded` Proxy @3
+        [ testCase "0" $ (𝕎 @3 0) @=? 𝕎 @8 0 `rounded` Proxy @3
+        , testCase "1" $ (𝕎    0) @=? 𝕎 @8 1 `rounded` Proxy @3
+        , testCase "2" $ (𝕎    1) @=? 𝕎 @8 2 `rounded` Proxy @3
+        , testCase "3" $ (𝕎    1) @=? 𝕎 @8 3 `rounded` Proxy @3
+        , testCase "4" $ (𝕎    1) @=? 𝕎 @8 4 `rounded` Proxy @3
+        , testCase "5" $ (𝕎    2) @=? 𝕎 @8 5 `rounded` Proxy @3
+        , testCase "6" $ (𝕎    2) @=? 𝕎 @8 6 `rounded` Proxy @3
+        , testCase "7" $ (𝕎 @3 2) @=? 𝕎 @8 7 `rounded` Proxy @3
         ]
     , testGroup "@6 rounded @2"
-        [ testCase "0" $ (𝕎 @4 0) ≟ 𝕎 @6 0 `rounded` Proxy @2
-        , testCase "1" $ (𝕎    1) ≟ 𝕎 @6 1 `rounded` Proxy @2
-        , testCase "2" $ (𝕎    1) ≟ 𝕎 @6 2 `rounded` Proxy @2
-        , testCase "3" $ (𝕎    2) ≟ 𝕎 @6 3 `rounded` Proxy @2
-        , testCase "4" $ (𝕎    2) ≟ 𝕎 @6 4 `rounded` Proxy @2
-        , testCase "5" $ (𝕎 @4 3) ≟ 𝕎 @6 5 `rounded` Proxy @2
+        [ testCase "0" $ (𝕎 @4 0) @=? 𝕎 @6 0 `rounded` Proxy @2
+        , testCase "1" $ (𝕎    1) @=? 𝕎 @6 1 `rounded` Proxy @2
+        , testCase "2" $ (𝕎    1) @=? 𝕎 @6 2 `rounded` Proxy @2
+        , testCase "3" $ (𝕎    2) @=? 𝕎 @6 3 `rounded` Proxy @2
+        , testCase "4" $ (𝕎    2) @=? 𝕎 @6 4 `rounded` Proxy @2
+        , testCase "5" $ (𝕎 @4 3) @=? 𝕎 @6 5 `rounded` Proxy @2
         ]
     , testGroup "@7 rounded @2"
-        [ testCase "0" $ (𝕎 @4 0) ≟ 𝕎 @7 0 `rounded` Proxy @2
-        , testCase "1" $ (𝕎    1) ≟ 𝕎 @7 1 `rounded` Proxy @2
-        , testCase "2" $ (𝕎    1) ≟ 𝕎 @7 2 `rounded` Proxy @2
-        , testCase "3" $ (𝕎    2) ≟ 𝕎 @7 3 `rounded` Proxy @2
-        , testCase "4" $ (𝕎    2) ≟ 𝕎 @7 4 `rounded` Proxy @2
-        , testCase "5" $ (𝕎    3) ≟ 𝕎 @7 5 `rounded` Proxy @2
-        , testCase "6" $ (𝕎 @4 3) ≟ 𝕎 @7 6 `rounded` Proxy @2
+        [ testCase "0" $ (𝕎 @4 0) @=? 𝕎 @7 0 `rounded` Proxy @2
+        , testCase "1" $ (𝕎    1) @=? 𝕎 @7 1 `rounded` Proxy @2
+        , testCase "2" $ (𝕎    1) @=? 𝕎 @7 2 `rounded` Proxy @2
+        , testCase "3" $ (𝕎    2) @=? 𝕎 @7 3 `rounded` Proxy @2
+        , testCase "4" $ (𝕎    2) @=? 𝕎 @7 4 `rounded` Proxy @2
+        , testCase "5" $ (𝕎    3) @=? 𝕎 @7 5 `rounded` Proxy @2
+        , testCase "6" $ (𝕎 @4 3) @=? 𝕎 @7 6 `rounded` Proxy @2
         ]
     , testGroup "@8 rounded @2"
-        [ testCase "0" $ (𝕎 @5 0) ≟ 𝕎 @8 0 `rounded` Proxy @2
-        , testCase "1" $ (𝕎    1) ≟ 𝕎 @8 1 `rounded` Proxy @2
-        , testCase "2" $ (𝕎    1) ≟ 𝕎 @8 2 `rounded` Proxy @2
-        , testCase "3" $ (𝕎    2) ≟ 𝕎 @8 3 `rounded` Proxy @2
-        , testCase "4" $ (𝕎    2) ≟ 𝕎 @8 4 `rounded` Proxy @2
-        , testCase "5" $ (𝕎    3) ≟ 𝕎 @8 5 `rounded` Proxy @2
-        , testCase "6" $ (𝕎    3) ≟ 𝕎 @8 6 `rounded` Proxy @2
-        , testCase "7" $ (𝕎 @5 4) ≟ 𝕎 @8 7 `rounded` Proxy @2
+        [ testCase "0" $ (𝕎 @5 0) @=? 𝕎 @8 0 `rounded` Proxy @2
+        , testCase "1" $ (𝕎    1) @=? 𝕎 @8 1 `rounded` Proxy @2
+        , testCase "2" $ (𝕎    1) @=? 𝕎 @8 2 `rounded` Proxy @2
+        , testCase "3" $ (𝕎    2) @=? 𝕎 @8 3 `rounded` Proxy @2
+        , testCase "4" $ (𝕎    2) @=? 𝕎 @8 4 `rounded` Proxy @2
+        , testCase "5" $ (𝕎    3) @=? 𝕎 @8 5 `rounded` Proxy @2
+        , testCase "6" $ (𝕎    3) @=? 𝕎 @8 6 `rounded` Proxy @2
+        , testCase "7" $ (𝕎 @5 4) @=? 𝕎 @8 7 `rounded` Proxy @2
         ]
     ]
 
